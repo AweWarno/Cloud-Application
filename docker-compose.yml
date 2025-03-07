@@ -1,0 +1,27 @@
+# Конфигурация сервисов для запуска через Docker Compose
+services:
+  # Сервис базы данных PostgreSQL
+  postgres:
+    image: 'postgres:latest'
+    environment:
+      - 'POSTGRES_DB=postgres'
+      - 'POSTGRES_USER=user'
+      - 'POSTGRES_PASSWORD=user'
+    ports:
+      - '5432:5432' # Проброс порта 5432 контейнера на порт 5432 хоста
+
+  # Сервис приложения CloudApplication
+  app:
+    build:
+      context: . # Текущая директория проекта (где лежит Dockerfile)
+      dockerfile: Dockerfile # Имя файла Dockerfile
+    ports:
+      - '8081:8081' # Проброс порта приложения на хост
+    environment:
+      - 'SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres'
+      - 'SPRING_DATASOURCE_USERNAME=user'
+      - 'SPRING_DATASOURCE_PASSWORD=user'
+      - 'SPRING_LIQUIBASE_ENABLED=true'
+      - 'SERVER_PORT=8081'
+    depends_on:
+      - postgres # Зависимость от сервиса postgres (запускается после него)

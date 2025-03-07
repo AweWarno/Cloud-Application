@@ -1,0 +1,75 @@
+databaseChangeLog:
+  # ChangeSet 1: Создание таблицы files для хранения информации о файлах
+  - changeSet:
+      id: 1
+      author: aleksejfedickin
+      preConditions:
+        - onFail: MARK_RAN # Если таблица уже существует, миграция помечается как выполненная
+        - not:
+            - tableExists:
+                tableName: files # Проверяем, что таблица files ещё не создана
+      changes:
+        - createTable:
+            tableName: files
+            remarks: "Таблица для хранения информации о файлах"
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+                    primaryKeyName: pk_files
+                  remarks: "Уникальный идентификатор файла"
+              - column:
+                  name: hash
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+                  remarks: "Хэш файла (строковый формат)"
+              - column:
+                  name: owner
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+                  remarks: "Владелец файла (имя пользователя)"
+              - column:
+                  name: data
+                  type: bytea
+                  constraints:
+                    nullable: false
+                  remarks: "Бинарные данные файла"
+              - column:
+                  name: filename
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+                  remarks: "Имя файла"
+              - column:
+                  name: size
+                  type: bigint
+                  constraints:
+                    nullable: false
+                  remarks: "Размер файла в байтах"
+      rollback:
+        - dropTable:
+            tableName: files # Откат миграции путем удаления таблицы
+            cascadeConstraints: false # Не удалять связанные данные (если будут внешние ключи)
+  - changeSet:
+      id: 2
+      author: aleksejfedickin
+      changes:
+        - createIndex:
+            indexName: idx_files_owner
+            tableName: files
+            columns:
+              - column:
+                  name: owner
+        - createIndex:
+            indexName: idx_files_filename
+            tableName: files
+            columns:
+              - column:
+                  name: filename
+      remarks: "Создание индексов для ускорения поиска по owner и filename"

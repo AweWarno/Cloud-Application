@@ -1,0 +1,24 @@
+# src
+#├── main
+#│   ├── java
+#│   │   └── com.example.cloud
+#│   └── resources
+#│       ├── db
+#│       │   └── changelog
+#│       │       ├── changelog.yaml
+#│       │       └── changes
+#│       │           ├── 01-add-default-user.yaml
+#│       │           └── 02-add-files-table.yaml
+
+
+databaseChangeLog:
+  # Главный файл миграции базы данных
+  # Подключает отдельные миграции для создания таблиц и начальных данных
+
+  # Подключение миграции для создания таблицы users и добавления тестового пользователя
+  - include:
+      file: db/changelog/changes/01-add-default-user.yaml
+
+  # Подключение миграции для создания таблицы files
+  - include:
+      file: db/changelog/changes/02-add-files-table.yaml

@@ -1,0 +1,40 @@
+# Настройки сервера приложения
+server:
+  port: ${SERVER_PORT:8081} # Порт, на котором запускается сервер
+
+# Конфигурация Spring Boot
+spring:
+  # Настройки подключения к базе данных PostgreSQL
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${SPRING_DATASOURCE_USERNAME:user}
+    password: ${SPRING_DATASOURCE_PASSWORD:user}
+    driver-class-name: org.postgresql.Driver
+
+  # Настройки Hibernate
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+  # Настройки Liquibase для управления миграциями базы данных
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/changelog.yaml # Путь к главному файлу миграций
+
+  # Настройки загрузки файлов
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+# Настройки логирования приложения
+logging:
+  level:
+    root: INFO # Общий уровень логирования для всех пакетов
+    com.example.cloud: DEBUG # Подробные логи для приложения
+    org.hibernate: INFO # Логи Hibernate (SQL-запросы и работа ORM)
+    liquibase: INFO # Логи выполнения миграций Liquibase
+    org.springframework.beans.factory: DEBUG # Показывает какие бины стартуют
+    org.springframework: DEBUG

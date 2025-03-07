@@ -1,0 +1,80 @@
+databaseChangeLog:
+  # ChangeSet 1: Создание таблицы users для хранения данных пользователей
+  - changeSet:
+      id: 1
+      author: aleksejfedickin
+      preConditions:
+        - onFail: MARK_RAN # Если таблица уже существует, миграция помечается как выполненная
+        - not:
+            - tableExists:
+                tableName: users # Проверяем, что таблица users ещё не создана
+      changes:
+        - createTable:
+            tableName: users # Имя таблицы
+            remarks: "Таблица для хранения учетных данных пользователей"
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                  remarks: "Уникальный идентификатор пользователя"
+              - column:
+                  name: username
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+                  remarks: "Логин пользователя (уникальный)"
+              - column:
+                  name: password
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+                  remarks: "Пароль пользователя"
+              - column:
+                  name: auth_token
+                  type: varchar(255)
+                  defaultValue: ''
+                  constraints:
+                    nullable: false
+                  remarks: "Токен авторизации пользователя"
+
+  # ChangeSet 2: Вставка начального пользователя для тестирования
+  - changeSet:
+      id: 2
+      author: aleksejfedickin
+      changes:
+        - insert:
+            tableName: users
+            columns:
+              - column:
+                  name: username
+                  value: user
+              - column:
+                  name: password
+                  value: user
+              - column:
+                  name: auth_token
+                  value: ''
+            remarks: "Добавление тестового пользователя с логином 'user' и паролем 'user'"
+
+  # ChangeSet 2: Добавление индексов
+  - changeSet:
+      id: 3
+      author: aleksejfedickin
+      changes:
+        - createIndex:
+            indexName: idx_users_username
+            tableName: users
+            columns:
+              - column:
+                  name: username
+        - createIndex:
+            indexName: idx_users_auth_token
+            tableName: users
+            columns:
+              - column:
+                  name: auth_token
+      remarks: "Создание индексов для ускорения поиска по username и auth_token"
