@@ -3,6 +3,7 @@ package com.example.cloud.service;
 import com.example.cloud.model.File;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,7 +25,7 @@ public interface FileService {
      * @throws SecurityException если токен невалиден или пользователь не авторизован.
      * @throws IllegalArgumentException если параметры запроса некорректны.
      */
-    List<File.FileDto> getItemList(Optional<Integer> limit, String token);
+    List<File> getItemList(Optional<Integer> limit, String owner);
 
     /**
      * Сохранение файла на сервере.
@@ -38,7 +39,7 @@ public interface FileService {
      * @throws IllegalArgumentException если имя файла или данные файла некорректны.
      * @throws org.springframework.web.multipart.MaxUploadSizeExceededException если размер файла превышает допустимый лимит.
      */
-    void saveItem(String filename, MultipartFile file, String token);
+    void saveItem(String filename, MultipartFile file, String owner) throws IOException;
 
     /**
      * Удаление файла с сервера.
@@ -49,7 +50,7 @@ public interface FileService {
      * @throws SecurityException если токен невалиден или пользователь не авторизован.
      * @throws IllegalArgumentException если файл с указанным именем не найден.
      */
-    void deleteItem(String filename, String token);
+    void deleteItem(String filename, String owner);
 
     /**
      * Обновление имени файла.
@@ -57,11 +58,11 @@ public interface FileService {
      *
      * @param oldFilename Текущее имя файла, которое нужно изменить. Не должно быть null или пустым.
      * @param newFilename Новое имя файла. Не должно быть null или пустым.
-     * @param token Токен авторизации в виде {@link Optional<String>}. Может быть пустым, но валидность проверяется.
+     * @param token Токен авторизации в виде {@link String}. Может быть пустым, но валидность проверяется.
      * @throws SecurityException если токен невалиден или пользователь не авторизован.
      * @throws IllegalArgumentException если файл не найден или новое имя некорректно.
      */
-    void updateItem(String oldFilename, String newFilename, Optional<String> token);
+    void updateItem(String oldFilename, String newFilename, String owner);
 
     /**
      * Скачивание файла с сервера.
@@ -73,5 +74,5 @@ public interface FileService {
      * @throws SecurityException если токен невалиден или пользователь не авторизован.
      * @throws IllegalArgumentException если файл с указанным именем не найден.
      */
-    byte[] downloadItem(String filename, String token);
+    byte[] downloadItem(String filename, String owner);
 }

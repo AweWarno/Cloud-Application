@@ -28,8 +28,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Интеграционный тестовый класс для проверки работы приложения CloudApplication.
- * Тестируются основные операции: вход, выход, загрузка файлов, получение списка, удаление, скачивание и обновление.
+ * Интеграционный тестовый класс для проверки работы приложения CloudApplication с использованием Testcontainers и Spring Boot.
+ * Тестируются основные операции: вход, выход, загрузка файлов, получение списка, удаление, скачивание и обновление файлов.
  */
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -82,13 +82,13 @@ class CloudApplicationIntegrationTest {
     // Успешные сценарии
 
     /**
-     * Тестирует успешный вход пользователя.
+     * Тестирует успешный вход пользователя в систему.
      * Входные данные: существующий пользователь с корректными логином и паролем.
-     * Ожидаемый результат: возвращается статус OK и токен авторизации.
+     * Ожидаемый результат: возвращается статус 200 OK и валидный токен авторизации.
      */
     @Test
     void testLogin() {
-        // Подготовка
+        // Подготовка: создаем и сохраняем пользователя, готовим запрос на вход
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -100,25 +100,25 @@ class CloudApplicationIntegrationTest {
         String loginBody = "{\"login\":\"testuser\",\"password\":\"password\"}";
         HttpEntity<String> loginRequest = new HttpEntity<>(loginBody, headers);
 
-        // Действие
+        // Действие: выполняем запрос на вход
         ResponseEntity<Map> loginResponse = restTemplate.postForEntity(
                 "http://localhost:" + port + "/cloud/login", loginRequest, Map.class);
 
-        // Проверка
-        assertEquals(HttpStatus.OK, loginResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что вход успешен и токен возвращен
+        assertEquals(HttpStatus.OK, loginResponse.getStatusCode(), "Статус должен быть 200 OK");
         String token = (String) loginResponse.getBody().get("auth-token");
         assertNotNull(token, "Токен не должен быть null");
         assertFalse(token.isEmpty(), "Токен не должен быть пустым");
     }
 
     /**
-     * Тестирует успешный выход пользователя.
-     * Входные данные: пользователь с валидным токеном.
-     * Ожидаемый результат: статус OK, токен сброшен в базе данных.
+     * Тестирует успешный выход пользователя из системы.
+     * Входные данные: пользователь с валидным токеном авторизации.
+     * Ожидаемый результат: возвращается статус 200 OK, токен сброшен на пустую строку в базе данных.
      */
     @Test
     void testLogout() {
-        // Подготовка
+        // Подготовка: создаем пользователя с токеном и готовим запрос на выход
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("initial-token").build())
@@ -129,24 +129,24 @@ class CloudApplicationIntegrationTest {
         headers.set("auth-token", "initial-token");
         HttpEntity<String> logoutRequest = new HttpEntity<>(headers);
 
-        // Действие
+        // Действие: выполняем запрос на выход
         ResponseEntity<Void> logoutResponse = restTemplate.postForEntity(
                 "http://localhost:" + port + "/cloud/logout", logoutRequest, Void.class);
 
-        // Проверка
-        assertEquals(HttpStatus.OK, logoutResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что выход успешен и токен сброшен
+        assertEquals(HttpStatus.OK, logoutResponse.getStatusCode(), "Статус должен быть 200 OK");
         User updatedUser = userRepository.findUserByCredentialsLoginIgnoreCase("testuser").orElseThrow();
-        assertEquals("", updatedUser.getToken().getAuthToken(), "Токен должен быть сброшен");
+        assertEquals("", updatedUser.getToken().getAuthToken(), "Токен должен быть сброшен на пустую строку");
     }
 
     /**
      * Тестирует загрузку файла и получение списка файлов.
      * Входные данные: пользователь с валидным токеном, файл для загрузки.
-     * Ожидаемый результат: файл загружен, список содержит загруженный файл.
+     * Ожидаемый результат: возвращается статус 200 OK, список содержит информацию о загруженном файле.
      */
     @Test
     void testFileUploadAndGetList() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и загружаем файл
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -159,13 +159,13 @@ class CloudApplicationIntegrationTest {
         listHeaders.set("auth-token", token);
         HttpEntity<Void> listRequest = new HttpEntity<>(listHeaders);
 
-        // Действие
+        // Действие: запрашиваем список файлов
         ResponseEntity<List<Map<String, Object>>> listResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/list?limit=10", HttpMethod.GET, listRequest,
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {});
 
-        // Проверка
-        assertEquals(HttpStatus.OK, listResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что список содержит загруженный файл
+        assertEquals(HttpStatus.OK, listResponse.getStatusCode(), "Статус должен быть 200 OK");
         List<Map<String, Object>> files = listResponse.getBody();
         assertEquals(1, files.size(), "Список должен содержать один файл");
         assertEquals("test.txt", files.get(0).get("filename"), "Имя файла должно совпадать");
@@ -173,12 +173,12 @@ class CloudApplicationIntegrationTest {
 
     /**
      * Тестирует удаление файла.
-     * Входные данные: пользователь с валидным токеном, загруженный файл.
-     * Ожидаемый результат: файл удалён, статус OK.
+     * Входные данные: пользователь с валидным токеном, ранее загруженный файл.
+     * Ожидаемый результат: возвращается статус 200 OK, файл удален из базы данных.
      */
     @Test
     void testDeleteFile() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и загружаем файл
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -191,24 +191,24 @@ class CloudApplicationIntegrationTest {
         headers.set("auth-token", token);
         HttpEntity<Void> deleteRequest = new HttpEntity<>(headers);
 
-        // Действие
+        // Действие: выполняем запрос на удаление файла
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/file?filename=test.txt", HttpMethod.DELETE, deleteRequest, Void.class);
 
-        // Проверка
-        assertEquals(HttpStatus.OK, deleteResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что файл удален
+        assertEquals(HttpStatus.OK, deleteResponse.getStatusCode(), "Статус должен быть 200 OK");
         assertFalse(fileRepository.findItemByOwnerAndFileFilename("testuser", "test.txt").isPresent(),
-                "Файл должен быть удалён из базы");
+                "Файл должен быть удален из базы данных");
     }
 
     /**
      * Тестирует скачивание файла.
-     * Входные данные: пользователь с валидным токеном, загруженный файл.
-     * Ожидаемый результат: данные файла возвращены, статус OK.
+     * Входные данные: пользователь с валидным токеном, ранее загруженный файл.
+     * Ожидаемый результат: возвращается статус 200 OK, содержимое файла соответствует загруженному.
      */
     @Test
     void testDownloadFile() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и загружаем файл
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -221,12 +221,12 @@ class CloudApplicationIntegrationTest {
         headers.set("auth-token", token);
         HttpEntity<Void> downloadRequest = new HttpEntity<>(headers);
 
-        // Действие
+        // Действие: выполняем запрос на скачивание файла
         ResponseEntity<byte[]> downloadResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/file?filename=test.txt", HttpMethod.GET, downloadRequest, byte[].class);
 
-        // Проверка
-        assertEquals(HttpStatus.OK, downloadResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что файл скачан корректно
+        assertEquals(HttpStatus.OK, downloadResponse.getStatusCode(), "Статус должен быть 200 OK");
         assertArrayEquals("Test file content".getBytes(), downloadResponse.getBody(), "Содержимое файла должно совпадать");
     }
 
@@ -234,12 +234,12 @@ class CloudApplicationIntegrationTest {
 
     /**
      * Тестирует вход с неверными учетными данными.
-     * Входные данные: существующий логин, неверный пароль.
-     * Ожидаемый результат: статус BAD_REQUEST, сообщение "Неверные учетные данные".
+     * Входные данные: существующий логин и неверный пароль.
+     * Ожидаемый результат: возвращается статус 400 BAD_REQUEST и сообщение об ошибке "Неверные учетные данные".
      */
     @Test
     void testLoginWithInvalidCredentials() {
-        // Подготовка
+        // Подготовка: создаем пользователя и готовим запрос с неверным паролем
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -251,66 +251,66 @@ class CloudApplicationIntegrationTest {
         String loginBody = "{\"login\":\"testuser\",\"password\":\"wrongpassword\"}";
         HttpEntity<String> loginRequest = new HttpEntity<>(loginBody, headers);
 
-        // Действие
+        // Действие: выполняем запрос на вход
         ResponseEntity<Map> loginResponse = restTemplate.postForEntity(
                 "http://localhost:" + port + "/cloud/login", loginRequest, Map.class);
 
-        // Проверка
-        assertEquals(HttpStatus.BAD_REQUEST, loginResponse.getStatusCode(), "Статус должен быть BAD_REQUEST");
-        assertEquals("Неверные учетные данные", loginResponse.getBody().get("message"), "Сообщение об ошибке должно быть точным");
+        // Проверка: убеждаемся, что вход отклонен с корректным сообщением
+        assertEquals(HttpStatus.BAD_REQUEST, loginResponse.getStatusCode(), "Статус должен быть 400 BAD_REQUEST");
+        assertEquals("Неверные учетные данные", loginResponse.getBody().get("message"), "Сообщение об ошибке должно соответствовать ожидаемому");
     }
 
     /**
      * Тестирует выход с невалидным токеном.
-     * Входные данные: невалидный токен.
-     * Ожидаемый результат: статус BAD_REQUEST, сообщение "Неверный токен авторизации".
+     * Входные данные: невалидный токен авторизации.
+     * Ожидаемый результат: возвращается статус 400 BAD_REQUEST и сообщение об ошибке "Неверный токен авторизации".
      */
     @Test
     void testLogoutWithInvalidToken() {
-        // Подготовка
+        // Подготовка: готовим запрос с невалидным токеном
         HttpHeaders headers = new HttpHeaders();
         headers.set("auth-token", "invalid-token");
         HttpEntity<String> logoutRequest = new HttpEntity<>(headers);
 
-        // Действие
+        // Действие: выполняем запрос на выход
         ResponseEntity<Map> logoutResponse = restTemplate.postForEntity(
                 "http://localhost:" + port + "/cloud/logout", logoutRequest, Map.class);
 
-        // Проверка
-        assertEquals(HttpStatus.BAD_REQUEST, logoutResponse.getStatusCode(), "Статус должен быть BAD_REQUEST");
+        // Проверка: убеждаемся, что выход отклонен с корректным сообщением
+        assertEquals(HttpStatus.BAD_REQUEST, logoutResponse.getStatusCode(), "Статус должен быть 400 BAD_REQUEST");
         assertEquals("Неверный токен авторизации", logoutResponse.getBody().get("message"),
-                "Сообщение об ошибке должно быть точным");
+                "Сообщение об ошибке должно соответствовать ожидаемому");
     }
 
     /**
      * Тестирует получение списка файлов с невалидным токеном.
-     * Входные данные: невалидный токен.
-     * Ожидаемый результат: статус UNAUTHORIZED, сообщение "Неавторизован".
+     * Входные данные: невалидный токен авторизации.
+     * Ожидаемый результат: возвращается статус 401 UNAUTHORIZED и сообщение об ошибке "Неавторизован".
      */
     @Test
     void testGetListWithInvalidToken() {
-        // Подготовка
+        // Подготовка: готовим запрос с невалидным токеном
         HttpHeaders headers = new HttpHeaders();
         headers.set("auth-token", "invalid-token");
         HttpEntity<Void> listRequest = new HttpEntity<>(headers);
 
-        // Действие
+        // Действие: запрашиваем список файлов
         ResponseEntity<Map> listResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/list?limit=10", HttpMethod.GET, listRequest, Map.class);
 
-        // Проверка
-        assertEquals(HttpStatus.UNAUTHORIZED, listResponse.getStatusCode(), "Статус должен быть UNAUTHORIZED");
-        assertEquals("Неавторизован", listResponse.getBody().get("message"), "Сообщение об ошибке должно быть точным");
+        // Проверка: убеждаемся, что запрос отклонен с корректным сообщением
+        assertEquals(HttpStatus.UNAUTHORIZED, listResponse.getStatusCode(), "Статус должен быть 401 UNAUTHORIZED");
+        assertEquals("Неавторизован", listResponse.getBody().get("message"), "Сообщение об ошибке должно соответствовать ожидаемому");
     }
 
     /**
      * Тестирует загрузку пустого файла.
-     * Входные данные: валидный токен, пустой файл.
-     * Ожидаемый результат: статус BAD_REQUEST, сообщение "Ошибка входных данных".
+     * Входные данные: валидный токен, файл с пустым содержимым.
+     * Ожидаемый результат: возвращается статус 400 BAD_REQUEST и сообщение об ошибке "Ошибка входных данных".
      */
     @Test
     void testUploadEmptyFile() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и готовим запрос с пустым файлом
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -331,23 +331,23 @@ class CloudApplicationIntegrationTest {
         });
         HttpEntity<MultiValueMap<String, Object>> fileRequest = new HttpEntity<>(body, fileHeaders);
 
-        // Действие
+        // Действие: выполняем запрос на загрузку файла
         ResponseEntity<Map> fileResponse = restTemplate.postForEntity(
                 "http://localhost:" + port + "/cloud/file", fileRequest, Map.class);
 
-        // Проверка
-        assertEquals(HttpStatus.BAD_REQUEST, fileResponse.getStatusCode(), "Статус должен быть BAD_REQUEST");
-        assertEquals("Ошибка входных данных", fileResponse.getBody().get("message"), "Сообщение об ошибке должно быть точным");
+        // Проверка: убеждаемся, что загрузка отклонена с корректным сообщением
+        assertEquals(HttpStatus.BAD_REQUEST, fileResponse.getStatusCode(), "Статус должен быть 400 BAD_REQUEST");
+        assertEquals("Ошибка входных данных", fileResponse.getBody().get("message"), "Сообщение об ошибке должно соответствовать ожидаемому");
     }
 
     /**
      * Тестирует удаление несуществующего файла.
      * Входные данные: валидный токен, имя несуществующего файла.
-     * Ожидаемый результат: статус BAD_REQUEST, сообщение "Ошибка входных данных".
+     * Ожидаемый результат: возвращается статус 400 BAD_REQUEST и сообщение об ошибке "Ошибка входных данных".
      */
     @Test
     void testDeleteNonExistentFile() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и готовим запрос на удаление
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -359,23 +359,23 @@ class CloudApplicationIntegrationTest {
         headers.set("auth-token", token);
         HttpEntity<Void> deleteRequest = new HttpEntity<>(headers);
 
-        // Действие
+        // Действие: выполняем запрос на удаление несуществующего файла
         ResponseEntity<Map> deleteResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/file?filename=nonexistent.txt", HttpMethod.DELETE, deleteRequest, Map.class);
 
-        // Проверка
-        assertEquals(HttpStatus.BAD_REQUEST, deleteResponse.getStatusCode(), "Статус должен быть BAD_REQUEST");
-        assertEquals("Ошибка входных данных", deleteResponse.getBody().get("message"), "Сообщение об ошибке должно быть точным");
+        // Проверка: убеждаемся, что запрос отклонен с корректным сообщением
+        assertEquals(HttpStatus.BAD_REQUEST, deleteResponse.getStatusCode(), "Статус должен быть 400 BAD_REQUEST");
+        assertEquals("Ошибка входных данных", deleteResponse.getBody().get("message"), "Сообщение об ошибке должно соответствовать ожидаемому");
     }
 
     /**
-     * Тестирует обновление несуществующего файла.
-     * Входные данные: валидный токен, имя несуществующего файла.
-     * Ожидаемый результат: статус BAD_REQUEST, сообщение "Ошибка входных данных".
+     * Тестирует обновление имени несуществующего файла.
+     * Входные данные: валидный токен, имя несуществующего файла, новое имя.
+     * Ожидаемый результат: возвращается статус 400 BAD_REQUEST и сообщение об ошибке "Ошибка входных данных".
      */
     @Test
     void testUpdateNonExistentFile() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и готовим запрос на обновление
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -389,23 +389,23 @@ class CloudApplicationIntegrationTest {
         String updateBody = "{\"name\":\"new.txt\"}";
         HttpEntity<String> updateRequest = new HttpEntity<>(updateBody, headers);
 
-        // Действие
+        // Действие: выполняем запрос на обновление несуществующего файла
         ResponseEntity<Map> updateResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/file?filename=nonexistent.txt", HttpMethod.PUT, updateRequest, Map.class);
 
-        // Проверка
-        assertEquals(HttpStatus.BAD_REQUEST, updateResponse.getStatusCode(), "Статус должен быть BAD_REQUEST");
-        assertEquals("Ошибка входных данных", updateResponse.getBody().get("message"), "Сообщение об ошибке должно быть точным");
+        // Проверка: убеждаемся, что запрос отклонен с корректным сообщением
+        assertEquals(HttpStatus.BAD_REQUEST, updateResponse.getStatusCode(), "Статус должен быть 400 BAD_REQUEST");
+        assertEquals("Ошибка входных данных", updateResponse.getBody().get("message"), "Сообщение об ошибке должно соответствовать ожидаемому");
     }
 
     /**
      * Тестирует скачивание несуществующего файла.
      * Входные данные: валидный токен, имя несуществующего файла.
-     * Ожидаемый результат: статус BAD_REQUEST, сообщение "Ошибка входных данных".
+     * Ожидаемый результат: возвращается статус 400 BAD_REQUEST и сообщение об ошибке "Файл не найден".
      */
     @Test
     void testDownloadNonExistentFile() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и готовим запрос на скачивание
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -417,25 +417,25 @@ class CloudApplicationIntegrationTest {
         headers.set("auth-token", token);
         HttpEntity<Void> downloadRequest = new HttpEntity<>(headers);
 
-        // Действие
+        // Действие: выполняем запрос на скачивание несуществующего файла
         ResponseEntity<Map> downloadResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/file?filename=nonexistent.txt", HttpMethod.GET, downloadRequest, Map.class);
 
-        // Проверка
-        assertEquals(HttpStatus.BAD_REQUEST, downloadResponse.getStatusCode(), "Статус должен быть BAD_REQUEST");
-        assertEquals("Ошибка входных данных", downloadResponse.getBody().get("message"), "Сообщение об ошибке должно быть точным");
+        // Проверка: убеждаемся, что запрос отклонен с корректным сообщением
+        assertEquals(HttpStatus.BAD_REQUEST, downloadResponse.getStatusCode(), "Статус должен быть 400 BAD_REQUEST");
+        assertEquals("Файл не найден", downloadResponse.getBody().get("message"), "Сообщение об ошибке должно соответствовать ожидаемому");
     }
 
     // Крайние случаи
 
     /**
-     * Тестирует загрузку большого файла (10MB).
+     * Тестирует загрузку большого файла размером 10MB.
      * Входные данные: валидный токен, файл размером 10MB.
-     * Ожидаемый результат: файл успешно загружен, статус OK.
+     * Ожидаемый результат: возвращается статус 200 OK, файл успешно загружен.
      */
     @Test
     void testUploadLargeFile() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и готовим большой файл
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -459,23 +459,23 @@ class CloudApplicationIntegrationTest {
         });
         HttpEntity<MultiValueMap<String, Object>> fileRequest = new HttpEntity<>(body, fileHeaders);
 
-        // Действие
+        // Действие: выполняем запрос на загрузку большого файла
         ResponseEntity<String> fileResponse = restTemplate.postForEntity(
                 "http://localhost:" + port + "/cloud/file", fileRequest, String.class);
 
-        // Проверка
-        assertEquals(HttpStatus.OK, fileResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что загрузка успешна
+        assertEquals(HttpStatus.OK, fileResponse.getStatusCode(), "Статус должен быть 200 OK");
         assertEquals("ok", fileResponse.getBody(), "Ответ должен быть 'ok'");
     }
 
     /**
-     * Тестирует получение списка файлов с нулевым лимитом.
-     * Входные данные: валидный токен, загруженный файл, limit=0.
-     * Ожидаемый результат: список содержит все файлы, статус OK.
+     * Тестирует получение списка файлов с лимитом 0.
+     * Входные данные: валидный токен, ранее загруженный файл, параметр limit=0.
+     * Ожидаемый результат: возвращается статус 200 OK, список содержит все файлы пользователя.
      */
     @Test
     void testGetListWithZeroLimit() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и загружаем файл
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -488,13 +488,13 @@ class CloudApplicationIntegrationTest {
         listHeaders.set("auth-token", token);
         HttpEntity<Void> listRequest = new HttpEntity<>(listHeaders);
 
-        // Действие
+        // Действие: запрашиваем список файлов с лимитом 0
         ResponseEntity<List<Map<String, Object>>> listResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/list?limit=0", HttpMethod.GET, listRequest,
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {});
 
-        // Проверка
-        assertEquals(HttpStatus.OK, listResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что список содержит все файлы
+        assertEquals(HttpStatus.OK, listResponse.getStatusCode(), "Статус должен быть 200 OK");
         List<Map<String, Object>> files = listResponse.getBody();
         assertEquals(1, files.size(), "Список должен содержать один файл");
         assertEquals("test.txt", files.get(0).get("filename"), "Имя файла должно совпадать");
@@ -502,12 +502,12 @@ class CloudApplicationIntegrationTest {
 
     /**
      * Тестирует получение списка файлов без указания лимита.
-     * Входные данные: валидный токен, загруженный файл.
-     * Ожидаемый результат: список содержит все файлы, статус OK.
+     * Входные данные: валидный токен, ранее загруженный файл.
+     * Ожидаемый результат: возвращается статус 200 OK, список содержит все файлы пользователя.
      */
     @Test
     void testGetListWithoutLimit() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и загружаем файл
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -520,13 +520,13 @@ class CloudApplicationIntegrationTest {
         listHeaders.set("auth-token", token);
         HttpEntity<Void> listRequest = new HttpEntity<>(listHeaders);
 
-        // Действие
+        // Действие: запрашиваем список файлов без указания лимита
         ResponseEntity<List<Map<String, Object>>> listResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/list", HttpMethod.GET, listRequest,
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {});
 
-        // Проверка
-        assertEquals(HttpStatus.OK, listResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что список содержит все файлы
+        assertEquals(HttpStatus.OK, listResponse.getStatusCode(), "Статус должен быть 200 OK");
         List<Map<String, Object>> files = listResponse.getBody();
         assertEquals(1, files.size(), "Список должен содержать один файл");
         assertEquals("test.txt", files.get(0).get("filename"), "Имя файла должно совпадать");
@@ -537,11 +537,11 @@ class CloudApplicationIntegrationTest {
     /**
      * Тестирует загрузку нескольких файлов и получение списка.
      * Входные данные: валидный токен, три файла для загрузки.
-     * Ожидаемый результат: список содержит все три файла, статус OK.
+     * Ожидаемый результат: возвращается статус 200 OK, список содержит все три загруженных файла.
      */
     @Test
     void testMultipleFileUploadsAndList() {
-        // Подготовка
+        // Подготовка: создаем пользователя, выполняем вход и загружаем три файла
         User user = User.builder()
                 .credentials(User.Credentials.builder().login("testuser").password("password").build())
                 .token(User.Token.builder().authToken("").build())
@@ -557,13 +557,13 @@ class CloudApplicationIntegrationTest {
         listHeaders.set("auth-token", token);
         HttpEntity<Void> listRequest = new HttpEntity<>(listHeaders);
 
-        // Действие
+        // Действие: запрашиваем список файлов
         ResponseEntity<List<Map<String, Object>>> listResponse = restTemplate.exchange(
                 "http://localhost:" + port + "/cloud/list?limit=10", HttpMethod.GET, listRequest,
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {});
 
-        // Проверка
-        assertEquals(HttpStatus.OK, listResponse.getStatusCode(), "Статус должен быть OK");
+        // Проверка: убеждаемся, что список содержит все три файла
+        assertEquals(HttpStatus.OK, listResponse.getStatusCode(), "Статус должен быть 200 OK");
         List<Map<String, Object>> files = listResponse.getBody();
         assertEquals(3, files.size(), "Список должен содержать три файла");
         assertTrue(files.stream().anyMatch(f -> "file1.txt".equals(f.get("filename"))), "file1.txt должен быть в списке");
@@ -574,10 +574,10 @@ class CloudApplicationIntegrationTest {
     // Вспомогательные методы
 
     /**
-     * Выполняет вход и возвращает токен авторизации.
+     * Выполняет вход в систему и возвращает токен авторизации.
      * @param login логин пользователя
      * @param password пароль пользователя
-     * @return токен авторизации
+     * @return токен авторизации, полученный в ответе
      */
     private String loginAndGetToken(String login, String password) {
         HttpHeaders headers = new HttpHeaders();
@@ -591,9 +591,9 @@ class CloudApplicationIntegrationTest {
 
     /**
      * Загружает файл на сервер.
-     * @param token токен авторизации
-     * @param filename имя файла
-     * @param content содержимое файла
+     * @param token токен авторизации пользователя
+     * @param filename имя файла для загрузки
+     * @param content содержимое файла в виде строки
      */
     private void uploadFile(String token, String filename, String content) {
         HttpHeaders fileHeaders = new HttpHeaders();

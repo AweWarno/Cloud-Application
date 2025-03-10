@@ -10,7 +10,7 @@ services:
     ports:
       - '5432:5432' # Проброс порта 5432 контейнера на порт 5432 хоста
 
-  # Сервис приложения CloudApplication
+  # Сервис приложения CloudApplication (backend)
   app:
     build:
       context: . # Текущая директория проекта (где лежит Dockerfile)
@@ -25,3 +25,4 @@ services:
       - 'SERVER_PORT=8081'
     depends_on:
       - postgres # Зависимость от сервиса postgres (запускается после него)
+    restart: unless-stopped

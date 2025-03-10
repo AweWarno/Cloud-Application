@@ -3,6 +3,7 @@ package com.example.cloud.controller;
 import com.example.cloud.error.ErrorResponse;
 import com.example.cloud.model.File;
 import com.example.cloud.model.FileName;
+import com.example.cloud.service.AuthService;
 import com.example.cloud.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -227,6 +229,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class FileController {
     private final FileService fileService;
+    private final AuthService authService;
 
     /**
      * logger.info: Используется для записи успешных операций.
@@ -248,15 +251,24 @@ public class FileController {
             @RequestParam("limit") Optional<Integer> limit,
             @RequestHeader("auth-token") String headerAuthToken) {
         try {
+            String owner = validateTokenAndGetOwner(headerAuthToken);
             logger.info("Получен запрос на получение списка файлов с лимитом: {} и токеном: {}", limit, headerAuthToken);
-            List<File.FileDto> files = fileService.getItemList(limit, headerAuthToken);
-            return ResponseEntity.ok(files);
-        } catch (IllegalArgumentException e) {
-            logger.warn("Ошибка получения списка файлов: неверные данные, limit: {}, token: {}", limit, headerAuthToken, e);
-            return ResponseEntity.badRequest().body(ErrorResponse.of("Неверные входные данные", 400));
+
+            // Вызов сервиса для получения доменной модели
+            List<File> files = fileService.getItemList(limit, owner);
+
+            // Преобразование доменной модели в DTO
+            List<File.FileDto> fileDtos = files.stream()
+                    .map(file -> new File.FileDto(file.getFile().getFilename(), file.getFile().getSize()))
+                    .toList();
+
+            return ResponseEntity.ok(fileDtos);
         } catch (SecurityException e) {
             logger.warn("Ошибка авторизации при получении списка файлов, token: {}", headerAuthToken, e);
             return ResponseEntity.status(401).body(ErrorResponse.of("Неавторизован", 401));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Ошибка получения списка файлов: неверные данные, limit: {}, token: {}", limit, headerAuthToken, e);
+            return ResponseEntity.badRequest().body(ErrorResponse.of("Неверные входные данные", 400));
         } catch (Exception e) {
             logger.warn("Неизвестная ошибка при получении списка файлов, limit: {}, token: {}", limit, headerAuthToken, e);
             return ResponseEntity.status(500).body(ErrorResponse.of("Ошибка при получении списка файлов", 500));
@@ -278,21 +290,22 @@ public class FileController {
             @RequestPart("file") MultipartFile file,
             @RequestHeader("auth-token") String headerAuthToken) {
         try {
+            String owner = validateTokenAndGetOwner(headerAuthToken);
             logger.info("Получен запрос на загрузку файла: {}, размер: {}, токен: {}", filename, file.getSize(), headerAuthToken);
-            fileService.saveItem(filename, file, headerAuthToken);
+            fileService.saveItem(filename, file, owner); // Теперь может выбросить IOException
             return ResponseEntity.ok().body("ok");
-        } catch (IllegalArgumentException e) {
-            logger.warn("Ошибка загрузки файла: неверные данные, filename: {}, token: {}", filename, headerAuthToken, e);
-            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка входных данных", 400));
         } catch (SecurityException e) {
             logger.warn("Ошибка авторизации при загрузке файла, token: {}", headerAuthToken, e);
             return ResponseEntity.status(401).body(ErrorResponse.of("Неавторизован", 401));
-        } catch (MaxUploadSizeExceededException e) {
-            logger.warn("Превышен максимальный размер файла: {}, token: {}", filename, headerAuthToken, e);
-            return ResponseEntity.badRequest().body(ErrorResponse.of("Превышен максимальный размер файла", 400));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Ошибка загрузки файла: неверные данные, filename: {}, token: {}", filename, headerAuthToken, e);
+            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка входных данных", 400));
+        } catch (IOException e) {
+            logger.warn("Ошибка ввода-вывода при загрузке файла: {}, token: {}", filename, headerAuthToken, e);
+            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка входных данных", 400));
         } catch (Exception e) {
             logger.warn("Неизвестная ошибка при загрузке файла: {}, token: {}", filename, headerAuthToken, e);
-            return ResponseEntity.status(500).body(ErrorResponse.of("Ошибка при загрузке файла", 500));
+            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка при загрузке файла", 400));
         }
     }
 
@@ -309,15 +322,18 @@ public class FileController {
             @RequestParam("filename") String filename,
             @RequestHeader("auth-token") String headerAuthToken) {
         try {
+            String owner = validateTokenAndGetOwner(headerAuthToken);
             logger.info("Получен запрос на удаление файла: {}, токен: {}", filename, headerAuthToken);
-            fileService.deleteItem(filename, headerAuthToken);
+
+            // Вызов сервиса
+            fileService.deleteItem(filename, owner);
             return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            logger.warn("Ошибка удаления файла: неверные данные, filename: {}, token: {}", filename, headerAuthToken, e);
-            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка входных данных", 400));
         } catch (SecurityException e) {
             logger.warn("Ошибка авторизации при удалении файла, token: {}", headerAuthToken, e);
             return ResponseEntity.status(401).body(ErrorResponse.of("Неавторизован", 401));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Ошибка удаления файла: неверные данные, filename: {}, token: {}", filename, headerAuthToken, e);
+            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка входных данных", 400));
         } catch (Exception e) {
             logger.warn("Неизвестная ошибка при удалении файла: {}, token: {}", filename, headerAuthToken, e);
             return ResponseEntity.status(500).body(ErrorResponse.of("Ошибка при удалении файла", 500));
@@ -329,30 +345,36 @@ public class FileController {
      * Изменяет имя существующего файла на новое, указанное в теле запроса.
      *
      * @param oldFilename     Старое имя файла, передаваемое как параметр запроса.
-     * @param newFilename     Новое имя файла, передаваемое в теле запроса (JSON).
+     * @param newFilenameDto     Новое имя файла, передаваемое в теле запроса (JSON).
      * @param headerAuthToken Токен авторизации пользователя (может быть null, хотя в спецификации обязателен).
      * @return ResponseEntity с подтверждением успеха (200) или ошибкой (400, 401, 500).
      */
     @PutMapping("/file")
     public ResponseEntity<?> updateItem(
             @RequestParam("filename") String oldFilename,
-            @RequestBody FileName newFilename,
-            @RequestHeader("auth-token") Optional<String> headerAuthToken) {
-
+            @RequestBody FileName newFilenameDto,
+            @RequestHeader("auth-token") String headerAuthToken) {
         try {
-            logger.info("Получен запрос на обновление файла: {} -> {}, токен: {}", oldFilename, newFilename.getName(), headerAuthToken);
-            fileService.updateItem(oldFilename, newFilename.getName(), headerAuthToken);
+            String owner = validateTokenAndGetOwner(headerAuthToken);
+            logger.info("Получен запрос на обновление файла: {} -> {}, владелец: {}", oldFilename, newFilenameDto.getName(), owner);
+
+
+            // Преобразование DTO в доменную модель
+            String newFilename = newFilenameDto.getName();
+
+            // Вызов сервиса
+            fileService.updateItem(oldFilename, newFilename, owner);
             return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            logger.warn("Ошибка обновления файла: неверные данные, oldFilename: {}, newFilename: {}, token: {}",
-                    oldFilename, newFilename.getName(), headerAuthToken, e);
-            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка входных данных", 400));
         } catch (SecurityException e) {
             logger.warn("Ошибка авторизации при обновлении файла, token: {}", headerAuthToken, e);
             return ResponseEntity.status(401).body(ErrorResponse.of("Неавторизован", 401));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Ошибка обновления файла: неверные данные, oldFilename: {}, newFilename: {}, token: {}",
+                    oldFilename, newFilenameDto.getName(), headerAuthToken, e);
+            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка входных данных", 400));
         } catch (Exception e) {
             logger.warn("Неизвестная ошибка при обновлении файла: {} -> {}, token: {}",
-                    oldFilename, newFilename.getName(), headerAuthToken, e);
+                    oldFilename, newFilenameDto.getName(), headerAuthToken, e);
             return ResponseEntity.status(500).body(ErrorResponse.of("Ошибка при обновлении файла", 500));
         }
     }
@@ -368,23 +390,39 @@ public class FileController {
     @GetMapping("/file")
     public ResponseEntity<?> downloadItem(
             @RequestParam("filename") String filename,
-            @RequestHeader("auth-token") Optional<String> headerAuthToken) {
+            @RequestHeader("auth-token") String headerAuthToken) {
         try {
-            logger.info("Получен запрос на скачивание файла: {}, токен: {}", filename, headerAuthToken);
-            byte[] fileData = fileService.downloadItem(filename, headerAuthToken.orElseThrow(() -> new IllegalArgumentException("Токен отсутствует")));
+            String owner = validateTokenAndGetOwner(headerAuthToken);
+            logger.info("Получен запрос на скачивание файла: {}, владелец: {}", filename, owner);
+
+            // Вызов сервиса
+            byte[] fileData = fileService.downloadItem(filename, owner);
             return ResponseEntity.ok()
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM) // Используем octet-stream для бинарных данных
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                     .body(fileData);
-        } catch (IllegalArgumentException e) {
-            logger.warn("Ошибка скачивания файла: неверные данные, filename: {}, token: {}", filename, headerAuthToken, e);
-            return ResponseEntity.badRequest().body(ErrorResponse.of("Ошибка входных данных", 400));
         } catch (SecurityException e) {
-            logger.warn("Ошибка авторизации при скачивании файла, token: {}", headerAuthToken, e);
+            logger.warn("Ошибка авторизации при скачивании файла: {}", filename, e);
             return ResponseEntity.status(401).body(ErrorResponse.of("Неавторизован", 401));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Файл не найден: {}, владелец: {}", filename, e.getMessage());
+            return ResponseEntity.badRequest().body(ErrorResponse.of("Файл не найден", 400));
         } catch (Exception e) {
-            logger.warn("Неизвестная ошибка при скачивании файла: {}, token: {}", filename, headerAuthToken, e);
+            logger.warn("Неизвестная ошибка при скачивании файла: {}", filename, e);
             return ResponseEntity.status(500).body(ErrorResponse.of("Ошибка при скачивании файла", 500));
         }
+    }
+
+    /**
+     * Валидация токена и получение owner.
+     */
+    private String validateTokenAndGetOwner(String token) {
+        String cleanToken = token.replace("Bearer ", ""); // Удаляем префикс "Bearer "
+        if (!authService.validateToken(cleanToken)) {
+            throw new SecurityException("Невалидный токен");
+        }
+        return authService.getUserByToken(Optional.of(cleanToken))
+                .map(user -> user.getCredentials().getLogin())
+                .orElseThrow(() -> new SecurityException("Пользователь не найден"));
     }
 }

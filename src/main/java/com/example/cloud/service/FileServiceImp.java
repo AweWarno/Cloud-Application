@@ -29,26 +29,19 @@ public class FileServiceImp implements FileService {
      * Возвращает список файлов, отсортированных по размеру, с учетом лимита.
      *
      * @param limit Опциональный лимит количества возвращаемых файлов.
-     * @param token Токен авторизации пользователя.
+     * @param owner Токен авторизации пользователя.
      * @return Список объектов FileDto с именами и размерами файлов.
      * @throws SecurityException если токен невалиден.
      */
-    public List<File.FileDto> getItemList(Optional<Integer> limit, String token) {
-        logger.info("Получен запрос на список файлов, лимит: {}, токен: {}", limit, token);
-        if (!authService.validateToken(token)) {
-            logger.warn("Невалидный токен при запросе списка файлов: {}", token);
-            throw new SecurityException("Невалидный токен");
-        }
+    @Override
+    public List<File> getItemList(Optional<Integer> limit, String owner) {
+        logger.info("Получен запрос на список файлов, лимит: {}, владелец: {}", limit, owner);
 
-        String owner = authService.getUserByToken(Optional.of(token))
-                .map(user -> user.getCredentials().getLogin())
-                .orElseThrow(() -> new SecurityException("Пользователь не найден"));
-
-        Limit limitValue = limit.filter(l -> l > 0) // Только положительные значения
+        Limit limitValue = limit.filter(l -> l > 0)
                 .map(Limit::of)
-                .orElseGet(Limit::unlimited); // limit=0 или отсутствует -> unlimited
-        List<File> items = fileRepository.findItemByOwnerOrderByFileSizeAsc(owner, limitValue);
-        return items.stream().map(File::getFile).toList();
+                .orElseGet(Limit::unlimited);
+
+        return fileRepository.findItemByOwnerOrderByFileSizeAsc(owner, limitValue);
     }
 
     /**
@@ -57,16 +50,15 @@ public class FileServiceImp implements FileService {
      *
      * @param filename Имя файла.
      * @param file Файл в формате MultipartFile.
-     * @param token Токен авторизации пользователя.
+     * @param owner Токен авторизации пользователя.
      * @throws SecurityException если токен невалиден.
      * @throws IllegalArgumentException если не удалось сохранить файл.
      */
-    public void saveItem(String filename, MultipartFile file, String token) {
-        logger.info("Получен запрос на сохранение файла: {}, токен: {}", filename, token);
-        if (!authService.validateToken(token)) {
-            logger.warn("Невалидный токен при сохранении файла: {}", token);
-            throw new SecurityException("Невалидный токен");
-        }
+    @Override
+    public void saveItem(String filename, MultipartFile file, String owner) throws IOException {
+        logger.info("Получен запрос на сохранение файла: {}, владелец: {}", filename, owner);
+
+        // Валидация входных данных
         if (filename == null || filename.trim().isEmpty()) {
             logger.error("Имя файла не указано или пустое");
             throw new IllegalArgumentException("Имя файла не может быть null или пустым");
@@ -76,25 +68,27 @@ public class FileServiceImp implements FileService {
             throw new IllegalArgumentException("Файл не может быть null или пустым");
         }
 
-        String owner = authService.getUserByToken(Optional.ofNullable(token))
-                .map(user -> user.getCredentials().getLogin())
-                .orElseThrow(() -> new SecurityException("Пользователь не найден"));
-
         try {
+            // Чтение данных файла
+            byte[] fileData = file.getInputStream().readAllBytes();
+
+            // Создание объекта File
             File newFile = File.builder()
-                    .hash(String.valueOf(file.hashCode()))
-                    .owner(owner)
-                    .data(file.getInputStream().readAllBytes())
+                    .hash(String.valueOf(file.hashCode())) // Хэш файла для уникальности
+                    .owner(owner) // Владелец файла
+                    .data(fileData) // Бинарные данные файла
                     .file(File.FileDto.builder()
-                            .filename(filename)
-                            .size(file.getSize())
+                            .filename(filename) // Имя файла
+                            .size(file.getSize()) // Размер файла
                             .build())
                     .build();
+
+            // Сохранение файла в репозитории
             fileRepository.save(newFile);
             logger.info("Файл успешно сохранен: {}", filename);
         } catch (IOException e) {
             logger.error("Ошибка ввода-вывода при сохранении файла: {}", filename, e);
-            throw new IllegalArgumentException("Ошибка при чтении файла: " + e.getMessage());
+            throw new IOException("Ошибка при чтении файла: " + e.getMessage());
         }
     }
 
@@ -103,20 +97,13 @@ public class FileServiceImp implements FileService {
      * Удаляет файл по имени и владельцу.
      *
      * @param filename Имя файла для удаления.
-     * @param token Токен авторизации пользователя.
+     * @param owner Токен авторизации пользователя.
      * @throws SecurityException если токен невалиден.
      * @throws IllegalArgumentException если файл не найден.
      */
-    public void deleteItem(String filename, String token) {
-        logger.info("Получен запрос на удаление файла: {}, токен: {}", filename, token);
-        if (!authService.validateToken(token)) {
-            logger.warn("Невалидный токен при удалении файла: {}", token);
-            throw new SecurityException("Невалидный токен");
-        }
-
-        String owner = authService.getUserByToken(Optional.ofNullable(token))
-                .map(user -> user.getCredentials().getLogin())
-                .orElseThrow(() -> new SecurityException("Пользователь не найден"));
+    @Override
+    public void deleteItem(String filename, String owner) {
+        logger.info("Получен запрос на удаление файла: {}, владелец: {}", filename, owner);
 
         Optional<File> item = fileRepository.findItemByOwnerAndFileFilename(owner, filename);
         if (item.isEmpty()) {
@@ -134,20 +121,13 @@ public class FileServiceImp implements FileService {
      *
      * @param oldFilename Старое имя файла.
      * @param newFilename Новое имя файла.
-     * @param token Токен авторизации пользователя.
+     * @param owner Токен авторизации пользователя.
      * @throws SecurityException если токен невалиден.
      * @throws IllegalArgumentException если файл не найден.
      */
-    public void updateItem(String oldFilename, String newFilename, Optional<String> token) {
-        logger.info("Получен запрос на обновление файла: {} -> {}, токен: {}", oldFilename, newFilename, token);
-        if (!authService.validateToken(token.orElse(""))) {
-            logger.warn("Невалидный токен при обновлении файла: {}", token);
-            throw new SecurityException("Невалидный токен");
-        }
-
-        String owner = authService.getUserByToken(token)
-                .map(user -> user.getCredentials().getLogin())
-                .orElseThrow(() -> new SecurityException("Пользователь не найден"));
+    @Override
+    public void updateItem(String oldFilename, String newFilename, String owner) {
+        logger.info("Получен запрос на обновление файла: {} -> {}, владелец: {}", oldFilename, newFilename, owner);
 
         Optional<File> file = fileRepository.findItemByOwnerAndFileFilename(owner, oldFilename);
         if (file.isEmpty()) {
@@ -165,21 +145,14 @@ public class FileServiceImp implements FileService {
      * Возвращает бинарные данные файла по имени и владельцу.
      *
      * @param filename Имя файла для скачивания.
-     * @param token    Токен авторизации пользователя.
+     * @param owner    Токен авторизации пользователя.
      * @return Объект File с данными файла.
      * @throws SecurityException        если токен невалиден.
      * @throws IllegalArgumentException если файл не найден.
      */
-    public byte[] downloadItem(String filename, String token) {
-        logger.info("Получен запрос на скачивание файла: {}, токен: {}", filename, token);
-        if (!authService.validateToken(token)) {
-            logger.warn("Невалидный токен при скачивании файла: {}", token);
-            throw new SecurityException("Невалидный токен");
-        }
-
-        String owner = authService.getUserByToken(Optional.of(token))
-                .map(user -> user.getCredentials().getLogin())
-                .orElseThrow(() -> new SecurityException("Пользователь не найден"));
+    @Override
+    public byte[] downloadItem(String filename, String owner) {
+        logger.info("Получен запрос на скачивание файла: {}, владелец: {}", filename, owner);
 
         Optional<File> item = fileRepository.findItemByOwnerAndFileFilename(owner, filename);
         if (item.isEmpty()) {
